@@ -110,16 +110,17 @@ public class Main {
      * @throws Exception
      */
     private boolean checkIsAddrStr(String addrStr) throws Exception {
-        URL url = new URL(host + path + params + addrStr);
+        String urlStr = URLEncoder.encode(addrStr, "UTF-8");
+        URL url = new URL(host+path+params+urlStr);
         int cnt = 0; // addrStr을 api를 사용하여 주소검색 하였을때 조회되는 검색어 개수
 
         HttpsURLConnection connection = null;
 
         try{
             connection = (HttpsURLConnection) url.openConnection();
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-            connection.setRequestProperty("Ocp-Apim-Subscription-Key", key);
+            connection.setRequestMethod("GET");
+            //connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            //connection.setRequestProperty("Ocp-Apim-Subscription-Key", key);
             connection.setDoOutput(true);
 
             int responseCode = connection.getResponseCode();
@@ -143,7 +144,6 @@ public class Main {
                     }
                     //{"results":{"common":{"errorMessage":"정상","countPerPage":"10","totalCount":"0","errorCode":"0","currentPage":"1"},"juso":[]}}
 
-                    //System.out.println(jsonobj);
                     cnt = jsonobj.get("results").getAsJsonObject().get("common").getAsJsonObject().get("totalCount").getAsInt();
 
 
