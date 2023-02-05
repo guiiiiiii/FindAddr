@@ -7,36 +7,30 @@ import jdk.nashorn.internal.parser.JSONParser;
 
 import java.io.*;
 import java.net.*;
-import java.util.Arrays;
-import java.util.Locale;
-import java.util.Scanner;
+import java.util.*;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.net.ssl.HttpsURLConnection;
 
-/****
- * kakao rest api key 152626fd24ec59c0689721b0d8bf0f8b
- * 주소 api key devU01TX0FVVEgyMDIyMDkxNTE0NDUwMjExMjk3NDE=
- */
+
 public class Main {
     private static Logger logger = Logger.getLogger(Main.class.getName());
 
-    static String host = "https://business.juso.go.kr";
-    static String path = "/addrlink/addrLinkApi.do";
+    static String host = "https://www.juso.go.kr";
+    static String path = "/info/RoadNameDataList.do?";
 
-    static String key = "devU01TX0FVVEgyMDIyMDkxNTE0NDUwMjExMjk3NDE=";
+    static String params = "type=search&roadCd=&city1=&county1=&town1=&searchType=0&extend=false&keyword=";
 
-    static String params = "?confmKey="+key+"&currentPage=1&countPerPage=10&resultType=json&keyword=";
-
-    // 일반적인 주소형식을 정의 ex. 종로, 백석로, 구로3동 ...etc
-    static String checkStrArr = "빌딩;건물;로;길;읍;면;동;가";
-    static String wordsBreak = "에;로;으로";
-    static String regExp = "([\\D\\d]*([가-힣a-zA-Z0-9]){2,}(로|길)[\\D\\d]*)|([\\D\\d]*([가-힣a-zA-Z0-9]){2,}(읍|면|동|가)[\\D\\d]*)";
-    static String regExp2 = "(([가-힣a-zA-Z0-9]){2,}(로|길))|(([가-힣a-zA-Z0-9]){2,}(읍|동))";
+    // 도로명 주소는 도로명+건물번호로 이루어져있다.
+    // 이 때 도로명은 대로, 로, 길로 끝나며 도로명에는 띄어쓰기나 특수문자가 존재하지 않는다
+    // 또한 도로명은 큰 길(ex 대로) 에서 작은도로 갈림길로 간 경우 ㅇㅇ(대)로ㅇㅇ길로 표기하므로 도로명을 체크할 때 "길"을 우선적으로 체크한다
+    static List<String> aDoroName = Arrays.asList("길", "로");
+    static HashMap<String, Integer> oAddrDict = null;
 
     public static void main(String[] args) throws Exception {
         Main findAddrAtString = new Main();
+        oAddrDict = new HashMap<>();
 
         Scanner sc = new Scanner(System.in);
 
@@ -55,52 +49,74 @@ public class Main {
 
     }
 
-    private String findAddr(String addrStr) throws Exception {
-        String[] splitStr = null;
+    /***
+     * findAddrAtString string에 도로명이 포함되어있다면 도로명을 return
+     * @param sAddr
+     * @return String sDoroName
+     */
+    private String findAddr(String sAddr) throws Exception {
 
-        Pattern pattern = Pattern.compile(regExp);
-        Matcher matcher = pattern.matcher(addrStr);
+        for(String sDoro : aDoroName){
+            List<Integer> aIndexFromAddr = findAllIndex(sAddr, sDoro);
 
-        // 1. 도로명, 법정동 정규식을 한번에 패스하고 띄어쓰기가 훌륭하게 된 케이스
-        if(Pattern.matches(regExp, addrStr)){
-            splitStr = addrStr.split(" ");
-            for(String str : splitStr){
-                if(str.endsWith("로") || str.endsWith("길") || str.endsWith("읍") || str.endsWith("면") || str.endsWith("동") || str.endsWith("가")){
-                    // api호출
-                    if(checkIsAddrStr(str))
-                        return str;
+            // index가 한개 이상이면 그 인덱스부터 체크하는 함수 호출
+            if(aIndexFromAddr.size() > 0){
+                for(int index : aIndexFromAddr){
+                    String sCheck = checkStrContainAddr(sAddr.substring(0,index+sDoro.length()) , sDoro);
+                    if(!"".equals(sCheck)){
+                        return sCheck;
+                    }
                 }
+
+            }
+            // index가 없으면 continue
+            else{
+             continue;
             }
         }
 
-        // 로or길 등이 포함은 되어있는지 체크 ex) 백 석 로 26 or 도화-2길 or 한외빌딩
-        String[] checkArr = checkStrArr.split(";");
-        String checkResult= "";
+        return "주소 문자열이 없다";
+    }
 
-        for(String chkStr : checkArr){
-            if(addrStr.contains(chkStr)){
-                checkResult = checkIsAddrStrWithChkStr(addrStr, chkStr, " ");
-                if(!"".equals(checkResult)) return checkResult;
+    /**
+     * sTarget에 존재하는 모든 sStr의 위치를 찾아 List로 return
+     * @param sTarget   전체 문자열
+     * @param sStr      sTarget에서 찾고자 하는 문자
+     * @return
+     */
+    private List<Integer> findAllIndex(String sTarget, String sStr){
+        List<Integer> aResult = new ArrayList<>();
+
+        int nIndex = sTarget.indexOf(sStr);
+
+        while(nIndex != -1){
+            aResult.add(nIndex);
+            nIndex = sTarget.indexOf(sStr, nIndex+sStr.length());
+        }
+        return aResult;
+    }
+
+    private String checkStrContainAddr(String sAddrStr, String sAddr) throws Exception {
+        String sResult = "";
+        // 고민할 부분
+        // 사용자 입력을 받다보니 띄어쓰기의 신뢰도가 떨어짐
+        // 띄어쓰기를 제대로 했다고 가정하여 띄어쓰기를 토대로 문자열을 합쳐볼 것인지, 띄어쓰기를 무시하고 합쳐볼것인지 고민필요..
+        // api를 쏘다보니 여러번 호출할 수록 성능이 떨어짐
+
+        // 한글과 숫자를 제외한 모든 영문자, 띄어쓰기, 특수문자는 제거한다
+        String sTarget = sAddrStr.replaceAll("[^가-힣0-9]","");
+        int iSubstrIndex = sAddr.length()+1;
+
+        while(iSubstrIndex <= sTarget.length()){
+            if(checkIsAddrStr(sTarget.substring(sTarget.length()-iSubstrIndex, sTarget.length()))){
+                sResult = sTarget.substring(sTarget.length()-iSubstrIndex, sTarget.length());
+                break;
             }
+
+            iSubstrIndex++;
         }
 
-        // 띄어쓰기를 아예안한 케이스 ex) 마포구백석로26길에있는분식집
-        for(String chkStr : checkArr){
-            checkResult = checkIsAddrStrWithChkStr(addrStr.replaceAll(" ",""), chkStr);
-            if(!"".equals(checkResult)) return checkResult;
-        }
-
-        // 그 어떤 케이스도 통과하지 못한 케이스는 띄어쓰기를 모두 없앤 뒤 장소를 말하는 어절로 쪼갠 뒤 다시 체크한다 (ex. 에)
-        String[] checkWithWordsArr = wordsBreak.split(";");
-        for(String chkStr : checkWithWordsArr){
-            if(addrStr.contains(chkStr)){
-                checkResult = checkIsAddrStrWithChkStr(addrStr, chkStr);
-                if(!"".equals(checkResult)) return checkResult;
-            }
-
-        }
-
-        return "문자열 내에 주소없음";
+        return sResult;
     }
 
     /***
@@ -113,6 +129,11 @@ public class Main {
         String urlStr = URLEncoder.encode(addrStr, "UTF-8");
         URL url = new URL(host+path+params+urlStr);
         int cnt = 0; // addrStr을 api를 사용하여 주소검색 하였을때 조회되는 검색어 개수
+        String sHtml = "";
+
+        if(oAddrDict.get(addrStr) != null){
+            return true;
+        }
 
         HttpsURLConnection connection = null;
 
@@ -126,28 +147,16 @@ public class Main {
             int responseCode = connection.getResponseCode();
 
             if(responseCode == HttpsURLConnection.HTTP_OK){
-                try(BufferedReader in = new BufferedReader(
-                        new InputStreamReader(connection.getInputStream()))){
-
-                    String line = "";
-                    String result = "";
-                    while ((line = in.readLine()) != null) {
-                        result += line;
+                try (BufferedReader input = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                    String line;
+                    StringBuffer buffer = new StringBuffer();
+                    while ((line = input.readLine()) != null) {
+                        buffer.append(line);
                     }
-                    JsonParser jsonParser = new JsonParser();
-                    JsonObject jsonobj = null;
-                    try{
-                        jsonobj = (JsonObject) jsonParser.parse(result);
-                    }catch(JsonParseException e){
-                        logger.warning(getPrintStackTrace(e));
-                        throw e;
-                    }
-                    //{"results":{"common":{"errorMessage":"정상","countPerPage":"10","totalCount":"0","errorCode":"0","currentPage":"1"},"juso":[]}}
+                    sHtml =  buffer.toString();
+                }
 
-                    cnt = jsonobj.get("results").getAsJsonObject().get("common").getAsJsonObject().get("totalCount").getAsInt();
-
-
-                }catch(Exception e){
+                catch(Exception e){
                     logger.warning(getPrintStackTrace(e));
                     throw e;
 
@@ -167,58 +176,14 @@ public class Main {
         }
 
         // api 결과에서 totalcount만 검사한다. totalcount가 0이면 주소가 아닌것
-        return (cnt > 0)? true : false;
-
-    }
-
-    /***
-     * check String을 사용하여 문자열을 쪼갠 뒤 주소문자를 찾는다
-     * @param str 원 문자열
-     * @param chkStr check String (ex, 로, 길, 동, 읍...)
-     * @return 주소로 인식된 문자열
-     * @throws Exception
-     */
-    private String checkIsAddrStrWithChkStr(String str, String chkStr) throws Exception {
-        return checkIsAddrStrWithChkStr(str, chkStr, "");
-    }
-
-    /***
-     * check String을 사용하여 문자열을 쪼갠 뒤 주소문자를 찾는다
-     * @param str 원 문자열
-     * @param chkStr check String (ex, 로, 길, 동, 읍...)
-     * @param splitStr 쪼개고자 하는 단위
-     * @return 주소로 인식된 문자열
-     * @throws Exception
-     */
-    private String checkIsAddrStrWithChkStr(String str, String chkStr, String splitStr) throws Exception {
-        String[] strArr = str.split(chkStr);
-        String checkAddr = "";
-        String result = "";
-
-        // chkStr로 쪼갠 배열의 마지막 index는 chkStr이 포함되어있지않으므로 loop체크에서 제외한다
-        for(int index = 0; index <= strArr.length-1 ; index++){
-            // 배열에 담긴 문자열을 공백으로 분리한 뒤 뒤에서부터 하나씩 합쳐가며 주소인지 확인
-            String[] words = strArr[index].split(splitStr);
-
-            for(int index2 = words.length-1 ; index2 >= 0 ; index2--){
-                checkAddr= words[index2].replaceAll("[^가-힣a-zA-Z0-9]","") + checkAddr;
-                // 주소를 찾았다면 return한다
-                if(checkIsAddrStr(checkAddr+chkStr)){
-                    result = checkAddr+chkStr;
-                }
-                else{
-                    if("".equals(result)) checkAddr = "";
-                    else return result;
-                }
-
-            }
-
-            if(!"".equals(result)) return result;
+        if(sHtml.substring(sHtml.indexOf("tbody")).indexOf("nodata") == -1){
+            oAddrDict.put(addrStr, 1);
+            return true;
+        }else{
+            return false;
         }
 
-        return result;
     }
-
 
     /**
      * exception발생 시 error log trace를 logger를 사용하여 print하기위한 function

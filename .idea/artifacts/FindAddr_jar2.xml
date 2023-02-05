@@ -1,0 +1,11 @@
+<component name="ArtifactManager">
+  <artifact name="FindAddr:jar2">
+    <output-path>$PROJECT_DIR$/out/artifacts/FindAddr_jar2</output-path>
+    <root id="root">
+      <element id="archive" name="FindAddr.jar">
+        <element id="module-output" name="FindAddr" />
+      </element>
+      <element id="library" level="project" name="src" />
+    </root>
+  </artifact>
+</component>
